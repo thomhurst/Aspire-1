@@ -37,12 +37,7 @@ internal sealed class FlociServiceBusEndpointAllocator : IDistributedApplication
         // DCP does not allocate endpoints on these custom resources. Allocate before the
         // parent's environment is evaluated, otherwise resolving its child's ports blocks startup.
         var listeners = new List<TcpListener>();
-        // Ports configured anywhere in the app model are bound later, so probing cannot see them.
-        var reservedPorts = @event.Model.Resources
-            .SelectMany(resource => resource.Annotations.OfType<EndpointAnnotation>())
-            .Select(endpoint => endpoint.Port)
-            .OfType<int>()
-            .ToHashSet();
+        var reservedPorts = GetReservedPorts(@event.Model);
         var allocatedResources = new List<FlociAzureServiceBusResource>();
         try
         {
@@ -97,6 +92,18 @@ internal sealed class FlociServiceBusEndpointAllocator : IDistributedApplication
                 new ResourceEndpointsAllocatedEvent(resource, @event.Services), cancellationToken)
                 .ConfigureAwait(false);
         }
+    }
+
+    internal static HashSet<int> GetReservedPorts(DistributedApplicationModel model)
+    {
+        // Ports configured anywhere in the app model are bound later, so probing cannot see them.
+        // Both reads are synchronous: Port is the configured value and AllocatedEndpoint is null until
+        // allocation completes, so endpoints that are still being allocated never block startup.
+        return model.Resources
+            .SelectMany(resource => resource.Annotations.OfType<EndpointAnnotation>())
+            .SelectMany(endpoint => new[] { endpoint.Port, endpoint.AllocatedEndpoint?.Port })
+            .OfType<int>()
+            .ToHashSet();
     }
 
     internal static int SelectPort(List<TcpListener> listeners, HashSet<int> reservedPorts)

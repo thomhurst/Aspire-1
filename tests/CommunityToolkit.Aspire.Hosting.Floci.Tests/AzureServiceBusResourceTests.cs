@@ -145,6 +145,22 @@ public class AzureServiceBusResourceTests
     }
 
     [Fact]
+    public void GetReservedPortsIncludesConfiguredAndAllocatedPortsOnly()
+    {
+        IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder();
+
+        builder.AddContainer("configured", "image").WithEndpoint("tcp", endpoint => endpoint.Port = 21000);
+        builder.AddContainer("allocated", "image").WithEndpoint("tcp", endpoint =>
+            endpoint.AllocatedEndpoint = new AllocatedEndpoint(endpoint, "localhost", 22000));
+        builder.AddContainer("pending", "image").WithEndpoint(targetPort: 8080, name: "tcp");
+
+        using var app = builder.Build();
+        var appModel = app.Services.GetRequiredService<DistributedApplicationModel>();
+
+        Assert.Equal([21000, 22000], FlociServiceBusEndpointAllocator.GetReservedPorts(appModel).Order());
+    }
+
+    [Fact]
     public void SelectPortSkipsReservedPorts()
     {
         // Leave exactly one free, unreserved port in the selection range.
